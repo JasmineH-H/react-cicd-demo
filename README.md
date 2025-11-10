@@ -235,65 +235,68 @@ npm install
 ## Part 3: Configure GitHub Actions for CI/CD (15 minutes)
 
 ### Step 1: Create GitHub Actions Workflow
-Create `.github/workflows/ci-cd.yml`:
+Create `.github/workflows/deploy.yml`:
 ```yaml
-name: CI/CD Pipeline
+name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-      
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Run tests
-      run: npm test
-      
-    - name: Build application
-      run: npm run build
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Add .nojekyll
+        run: touch ./dist/.nojekyll
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
 
   deploy:
-    needs: test
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    
+    needs: build
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-      
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Build application
-      run: npm run build
-      
-    - name: Deploy to GitHub Pages
-      uses: peaceiris/actions-gh-pages@v3
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./dist
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 ```
 
 ### Step 2: Commit and Push Workflow
@@ -303,17 +306,27 @@ git commit -m "Add CI/CD workflow"
 git push
 ```
 
-### Step 3: Enable GitHub Pages
+### Step 3: Configure Repository Permissions
+**Important:** You must configure these settings for the workflow to work:
+
+1. Go to your repository on GitHub
+2. Navigate to **Settings** → **Actions** → **General**
+3. Scroll down to **Workflow permissions**
+4. Select **"Read and write permissions"**
+5. Check **"Allow GitHub Actions to create and approve pull requests"**
+6. Click **Save**
+
+### Step 4: Enable GitHub Pages
 1. Go to your repository on GitHub
 2. Click **Settings** → **Pages**
-3. Under "Source", select **Deploy from a branch**
-4. Select branch: **gh-pages** and folder: **/ (root)**
+3. Under **Build and deployment** → **Source**
+4. Select **GitHub Actions** (NOT "Deploy from a branch")
 5. Click **Save**
 
-### Step 4: Verify the Pipeline
+### Step 5: Verify the Pipeline
 1. Go to the **Actions** tab in your repository
 2. You should see your workflow running
-3. Watch as it runs tests and deploys
+3. Watch as it runs tests, builds, and deploys
 4. Once complete, your site will be available at: `https://YOUR-USERNAME.github.io/react-cicd-demo/`
 
 ## Part 4: Test the CI/CD Pipeline (15 minutes)
@@ -466,12 +479,19 @@ git push
 - Check Node.js versions match
 - Ensure all dependencies are in package.json
 
+**Deployment fails with 403 Permission Error:**
+- Go to **Settings** → **Actions** → **General** → **Workflow permissions**
+- Select **"Read and write permissions"**
+- This is required for the deployment action to work
+
 **Deployment fails:**
-- Verify GitHub Pages is enabled
-- Check that base path in vite.config.js matches repo name
-- Ensure GITHUB_TOKEN has correct permissions
+- Verify GitHub Pages is enabled in **Settings** → **Pages**
+- Ensure **Source** is set to **"GitHub Actions"** (not "Deploy from a branch")
+- Check that base path in `vite.config.ts` matches repo name
+- Make sure workflow permissions are configured correctly (see above)
 
 **Site shows 404:**
-- Wait a few minutes for GitHub Pages to build
-- Check the base path configuration
-- Verify files are in the gh-pages branch
+- Wait a few minutes for GitHub Pages to build and deploy
+- Check the base path configuration in `vite.config.ts`
+- Verify the deployment completed successfully in the **Actions** tab
+- Ensure `.nojekyll` file is being created in the build (workflow does this automatically)
